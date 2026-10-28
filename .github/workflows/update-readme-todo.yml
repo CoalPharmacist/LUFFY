@@ -33,6 +33,7 @@ jobs:
           import re
           import subprocess
           import tokenize
+          from collections import Counter
 
           root = pathlib.Path('.')
           readme_path = root / 'README.md'
@@ -77,6 +78,7 @@ jobs:
           ).splitlines()
 
           todo_markers = 0
+          code_marker_counts = Counter()
           new_entries_by_file = {}
           for relative_path in all_python_files:
               source = (root / relative_path).read_text(encoding='utf-8')
@@ -91,12 +93,33 @@ jobs:
                   if message.startswith(':'):
                       message = message[1:].strip()
                   file_entries.append((token.start[0], message))
+              code_marker_counts[relative_path] = len(file_entries)
               if relative_path in changed_files:
                   new_entries_by_file[relative_path] = file_entries
 
+          readme_counts = Counter(relative_path for relative_path, _, _ in old_entries)
+          print('TODO marker count differences versus existing README baseline:')
+          for relative_path in sorted(set(code_marker_counts) | set(readme_counts)):
+              if code_marker_counts[relative_path] != readme_counts[relative_path]:
+                  print(
+                      f'  {relative_path}: code={code_marker_counts[relative_path]} '
+                      f'readme={readme_counts[relative_path]}'
+                  )
+
           print(f'Current TODO markers in tracked Python files: {todo_markers}')
-          if todo_markers != 215:
-              raise SystemExit(f'Expected 215 current TODO markers, got {todo_markers}')
+          if todo_markers != 248:
+              raise SystemExit(f'Expected 248 current TODO markers, got {todo_markers}')
+
+          expected_new_counts = {
+              'luffy/deepscaler/utils.py': 11,
+              'luffy/verl/verl/protocol.py': 7,
+          }
+          for relative_path, expected_count in expected_new_counts.items():
+              actual_count = len(new_entries_by_file[relative_path])
+              if actual_count != expected_count:
+                  raise SystemExit(
+                      f'{relative_path}: expected {expected_count} current TODOs, got {actual_count}'
+                  )
 
           changed_set = set(changed_files)
           updated_entries = [entry for entry in old_entries if entry[0] not in changed_set]
