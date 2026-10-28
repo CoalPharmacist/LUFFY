@@ -1,0 +1,148 @@
+name: Update README TODO list
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit and push the README update to the dev branch
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Ensure main ref is available
+        run: git fetch origin main:main
+
+      - name: Update Complete TODO List
+        run: |
+          cat > /tmp/update_readme_todos.py <<'PY'
+          import io
+          import pathlib
+          import re
+          import subprocess
+          import tokenize
+
+          root = pathlib.Path('.')
+          readme_path = root / 'README.md'
+          old_readme = readme_path.read_text(encoding='utf-8')
+
+          title = '### 📝 Complete TODO List'
+          heading = '## 🤝 Contributing'
+          section_pattern = re.compile(
+              r'(' + re.escape(title) + r'\n\n).*?(\n\n' + re.escape(heading) + r')',
+              re.S,
+          )
+          section_match = section_pattern.search(old_readme)
+          if not section_match:
+              raise SystemExit('Complete TODO List section not found')
+
+          entry_pattern = re.compile(r'^- \[ \] \*\*(.+?):(\d+)\*\* - (.*)$')
+          old_entries = []
+          for line in section_match.group(0).splitlines():
+              entry_match = entry_pattern.match(line)
+              if entry_match:
+                  old_entries.append((entry_match.group(1), int(entry_match.group(2)), entry_match.group(3)))
+
+          print(f'Existing README TODO entries: {len(old_entries)}')
+          if len(old_entries) != 251:
+              raise SystemExit(f'Expected 251 existing README TODO entries, got {len(old_entries)}')
+
+          changed_files = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'main...dev', '--', '*.py'],
+              text=True,
+          ).splitlines()
+          print(f"Changed Python files in main...dev: {', '.join(changed_files)}")
+          expected_changed = [
+              'luffy/deepscaler/utils.py',
+              'luffy/verl/verl/protocol.py',
+          ]
+          if changed_files != expected_changed:
+              raise SystemExit(f'Unexpected changed Python files: {changed_files}')
+
+          all_python_files = subprocess.check_output(
+              ['git', 'ls-files', '*.py'],
+              text=True,
+          ).splitlines()
+
+          todo_markers = 0
+          new_entries_by_file = {}
+          for relative_path in all_python_files:
+              source = (root / relative_path).read_text(encoding='utf-8')
+              comments = tokenize.generate_tokens(io.StringIO(source).readline)
+              file_entries = []
+              for token in comments:
+                  if token.type != tokenize.COMMENT or 'TODO' not in token.string:
+                      continue
+                  todo_markers += 1
+                  comment = token.string[1:].strip()
+                  message = comment.split('TODO', 1)[1].strip()
+                  if message.startswith(':'):
+                      message = message[1:].strip()
+                  file_entries.append((token.start[0], message))
+              if relative_path in changed_files:
+                  new_entries_by_file[relative_path] = file_entries
+
+          print(f'Current TODO markers in tracked Python files: {todo_markers}')
+          if todo_markers != 240:
+              raise SystemExit(f'Expected 240 current TODO markers, got {todo_markers}')
+
+          changed_set = set(changed_files)
+          updated_entries = [entry for entry in old_entries if entry[0] not in changed_set]
+          for relative_path in changed_files:
+              for line_number, message in new_entries_by_file[relative_path]:
+                  updated_entries.append((relative_path, line_number, message))
+
+          updated_entries.sort(key=lambda entry: (entry[0], entry[1]))
+          if len(updated_entries) != 240:
+              raise SystemExit(f'Expected 240 updated README entries, got {len(updated_entries)}')
+
+          new_body = '\n'.join(
+              f'- [ ] **{relative_path}:{line_number}** - {message}'
+              for relative_path, line_number, message in updated_entries
+          )
+          new_readme = (
+              old_readme[:section_match.start()]
+              + section_match.group(1)
+              + new_body
+              + section_match.group(2)
+              + old_readme[section_match.end():]
+          )
+          readme_path.write_text(new_readme, encoding='utf-8')
+
+          print('Updated TODO entries for files changed by main...dev:')
+          for relative_path in changed_files:
+              print(f'  {relative_path}')
+              for line_number, message in new_entries_by_file[relative_path]:
+                  print(f'    {line_number}: {message}')
+
+          diff = subprocess.check_output(
+              ['git', 'diff', '--', 'README.md'],
+              text=True,
+          )
+          print('--- README diff stat ---')
+          print(subprocess.check_output(['git', 'diff', '--stat', '--', 'README.md'], text=True))
+          print('--- README diff ---')
+          print(diff)
+          PY
+          python /tmp/update_readme_todos.py
+
+      - name: Commit and push README update
+        if: ${{ inputs.commit == true }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add README.md
+          git commit -m "docs: update complete TODO list"
+          git push origin HEAD:dev
