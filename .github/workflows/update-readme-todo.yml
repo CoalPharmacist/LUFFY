@@ -56,8 +56,8 @@ jobs:
                   old_entries.append((entry_match.group(1), int(entry_match.group(2)), entry_match.group(3)))
 
           print(f'Existing README TODO entries: {len(old_entries)}')
-          if len(old_entries) != 251:
-              raise SystemExit(f'Expected 251 existing README TODO entries, got {len(old_entries)}')
+          if len(old_entries) != 226:
+              raise SystemExit(f'Expected 226 existing README TODO entries, got {len(old_entries)}')
 
           changed_files = subprocess.check_output(
               ['git', 'diff', '--name-only', 'main...dev', '--', '*.py'],
@@ -95,8 +95,8 @@ jobs:
                   new_entries_by_file[relative_path] = file_entries
 
           print(f'Current TODO markers in tracked Python files: {todo_markers}')
-          if todo_markers != 240:
-              raise SystemExit(f'Expected 240 current TODO markers, got {todo_markers}')
+          if todo_markers != 215:
+              raise SystemExit(f'Expected 215 current TODO markers, got {todo_markers}')
 
           changed_set = set(changed_files)
           updated_entries = [entry for entry in old_entries if entry[0] not in changed_set]
@@ -105,8 +105,8 @@ jobs:
                   updated_entries.append((relative_path, line_number, message))
 
           updated_entries.sort(key=lambda entry: (entry[0], entry[1]))
-          if len(updated_entries) != 240:
-              raise SystemExit(f'Expected 240 updated README entries, got {len(updated_entries)}')
+          if len(updated_entries) != 215:
+              raise SystemExit(f'Expected 215 updated README entries, got {len(updated_entries)}')
 
           new_body = '\n'.join(
               f'- [ ] **{relative_path}:{line_number}** - {message}'
